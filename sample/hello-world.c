@@ -13,9 +13,9 @@
 #include <signal.h>
 #ifndef _WIN32
 #include <netinet/in.h>
-# ifdef _XOPEN_SOURCE_EXTENDED
-#  include <arpa/inet.h>
-# endif
+#ifdef _XOPEN_SOURCE_EXTENDED
+#include <arpa/inet.h>
+#endif
 #include <sys/socket.h>
 #endif
 
@@ -30,7 +30,8 @@ static const char MESSAGE[] = "Hello, World!\n";
 static const int PORT = 9995;
 
 static void listener_cb(struct evconnlistener *, evutil_socket_t,
-    struct sockaddr *, int socklen, void *);
+	struct sockaddr *, int socklen, void *);
+static void conn_readcb(struct bufferevent *, void *);
 static void conn_writecb(struct bufferevent *, void *);
 static void conn_eventcb(struct bufferevent *, short, void *);
 static void signal_cb(evutil_socket_t, short, void *);
@@ -58,9 +59,8 @@ main(int argc, char **argv)
 	sin.sin_port = htons(PORT);
 
 	listener = evconnlistener_new_bind(base, listener_cb, (void *)base,
-	    LEV_OPT_REUSEABLE|LEV_OPT_CLOSE_ON_FREE, -1,
-	    (struct sockaddr*)&sin,
-	    sizeof(sin));
+		LEV_OPT_REUSEABLE | LEV_OPT_CLOSE_ON_FREE, -1, (struct sockaddr *)&sin,
+		sizeof(sin));
 
 	if (!listener) {
 		fprintf(stderr, "Could not create a listener!\n");
@@ -69,12 +69,14 @@ main(int argc, char **argv)
 
 	signal_event = evsignal_new(base, SIGINT, signal_cb, (void *)base);
 
-	if (!signal_event || event_add(signal_event, NULL)<0) {
+	if (!signal_event || event_add(signal_event, NULL) < 0) {
 		fprintf(stderr, "Could not create/add a signal event!\n");
 		return 1;
 	}
 
+	printf("JCheck %d\n", __LINE__);
 	event_base_dispatch(base);
+	printf("JCheck %d\n", __LINE__);
 
 	evconnlistener_free(listener);
 	event_free(signal_event);
@@ -86,7 +88,7 @@ main(int argc, char **argv)
 
 static void
 listener_cb(struct evconnlistener *listener, evutil_socket_t fd,
-    struct sockaddr *sa, int socklen, void *user_data)
+	struct sockaddr *sa, int socklen, void *user_data)
 {
 	struct event_base *base = user_data;
 	struct bufferevent *bev;
@@ -97,31 +99,61 @@ listener_cb(struct evconnlistener *listener, evutil_socket_t fd,
 		event_base_loopbreak(base);
 		return;
 	}
-	bufferevent_setcb(bev, NULL, conn_writecb, conn_eventcb, NULL);
+	printf("JCheck %d\n", __LINE__);
+	// bufferevent_setcb(bev, NULL, conn_writecb, conn_eventcb, NULL);
+	bufferevent_setcb(bev, conn_readcb, conn_writecb, conn_eventcb, NULL);
+	printf("JCheck %d\n", __LINE__);
 	bufferevent_enable(bev, EV_WRITE);
-	bufferevent_disable(bev, EV_READ);
+	printf("JCheck %d\n", __LINE__);
+	bufferevent_enable(bev, EV_READ);
+	// bufferevent_disable(bev, EV_READ);
 
 	bufferevent_write(bev, MESSAGE, strlen(MESSAGE));
+	printf("JCheck %d\n", __LINE__);
 }
 
 static void
 conn_writecb(struct bufferevent *bev, void *user_data)
 {
+	printf("JCheck %d\n", __LINE__);
 	struct evbuffer *output = bufferevent_get_output(bev);
 	if (evbuffer_get_length(output) == 0) {
 		printf("flushed answer\n");
-		bufferevent_free(bev);
+		// bufferevent_free(bev);
+	}
+}
+
+struct info {
+	const char *name;
+	size_t total_drained;
+};
+static void
+conn_readcb(struct bufferevent *bev, void *ctx)
+{
+	printf("JCheck %d\n", __LINE__);
+	// struct info *inf = ctx;
+	struct evbuffer *input = bufferevent_get_input(bev);
+	size_t len = evbuffer_get_length(input);
+	char MESSAGE[len];
+	bufferevent_read(bev, MESSAGE, len);
+	printf("JCheck %d, len: %d, MESSAGE: %s\n", __LINE__, (int)len, MESSAGE);
+	if (len) {
+		// inf->total_drained += len;
+		printf("JCheck %d\n", __LINE__);
+		evbuffer_drain(input, len);
+		// printf("Drained %lu bytes from %s\n", (unsigned long)len, inf->name);
 	}
 }
 
 static void
 conn_eventcb(struct bufferevent *bev, short events, void *user_data)
 {
+	printf("JCheck %d\n", __LINE__);
 	if (events & BEV_EVENT_EOF) {
 		printf("Connection closed.\n");
 	} else if (events & BEV_EVENT_ERROR) {
 		printf("Got an error on the connection: %s\n",
-		    strerror(errno));/*XXX win32*/
+			strerror(errno)); /*XXX win32*/
 	}
 	/* None of the other events can happen here, since we haven't enabled
 	 * timeouts */
@@ -131,8 +163,9 @@ conn_eventcb(struct bufferevent *bev, short events, void *user_data)
 static void
 signal_cb(evutil_socket_t sig, short events, void *user_data)
 {
+	printf("JCheck %d\n", __LINE__);
 	struct event_base *base = user_data;
-	struct timeval delay = { 2, 0 };
+	struct timeval delay = {2, 0};
 
 	printf("Caught an interrupt signal; exiting cleanly in two seconds.\n");
 
